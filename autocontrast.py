@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 img_orig = cv2.imread("unequalized.png", 0)
 
 B = float(raw_input("B (default 0.0) :") or 0.0)
-W = float(raw_input("W (default 1.0) :") or 1.0)
+W = float(raw_input("W (default 0.0) :") or 0.0)
 
 hist, bins = np.histogram(img_orig.flatten(), 256, [0, 256])
 
@@ -15,7 +15,7 @@ cdf = np.cumsum(hist)
 cdf_n = cdf * hist.max() / cdf.max()
 
 cdf_m = np.ma.masked_less_equal(cdf, B * cdf.max())
-cdf_m = np.ma.masked_greater_equal(cdf_m, W * cdf.max())
+cdf_m = np.ma.masked_greater_equal(cdf_m, (1.0 - W) * cdf.max())
 
 imin = cdf_m.argmin()
 imax = cdf_m.argmax()

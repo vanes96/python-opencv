@@ -1,57 +1,77 @@
-print("loading")
-
-import cv2
-import numpy as np
+from __future__ import print_function
 import matplotlib.pyplot as plt
+from PIL import Image
+import os.path
+from sys import argv
 
-img_orig = cv2.imread("unequalized.png", 0)
+def brighness(a):
+    return int(0.3 * a[0] + 0.59 * a[1] + 0.11 * a[2])
 
-B = float(raw_input("B (default 0.0) :") or 0.0)
-W = float(raw_input("W (default 0.0) :") or 0.0)
+def autocontrast(image, white_perc, black_perc):
+    image_ = image
+    size = image_.size[0] * image_.size[1]
+    number_white = int(size * white_perc)
+    number_black = int(size * black_perc)
+    clrs = image_.getcolors(size)
+    brts = [0] * 256
 
-hist, bins = np.histogram(img_orig.flatten(), 256, [0, 256])
+    for col in clrs:
+        brts[brighness(col[1])] += col[0]
 
-cdf = np.cumsum(hist)
-cdf_n = cdf * hist.max() / cdf.max()
+    count, index_black = 0, 0
+    for i in range(256):
+        if count < number_black:
+            count += brts[i]
+        else:
+            index_black = i
+            break
 
-cdf_m = np.ma.masked_less_equal(cdf, B * cdf.max())
-cdf_m = np.ma.masked_greater_equal(cdf_m, (1.0 - W) * cdf.max())
+    count, index_white = 0, 0
+    for i in range(255, -1, -1):
+        if count < number_white:
+            count += brts[i]
+        else:
+            index_white = i
+            break
+    #----------------------------------------------
+    pixels = list(image_.getdata())
+    for i in range(size):
+        brt = brighness(pixels[i])
+        if brt < index_black:
+            pixels[i] = (0, 0, 0)
+        elif brt > index_white:
+            pixels[i] = (255, 255, 255)
+        else:
+            dif = (brt - index_black) * 255 / (index_white - index_black) - brt
+            pixels[i] = (int(pixels[i][0] + dif * 0.3), int(pixels[i][1] + dif * 0.59), int(pixels[i][2] + dif * 0.11))
+    image_.putdata(pixels)
+    # ----------------------------------------------
+    return image_
 
-imin = cdf_m.argmin()
-imax = cdf_m.argmax()
+def save_image(img_orig, new_name, white_perc, black_perc):
+    plt.subplot(1, 2, 1)
+    plt.title('Original image')
+    plt.imshow(img_orig)
 
-tr = np.zeros(256, dtype=np.uint8)
-for i in range(0, 256):
-    if i < imin: tr[i] = 0
-    elif i > imax: tr[i] = 255
-    else: tr[i] = (i - imin) * 255 / (imax - imin)
+    img_corr = autocontrast(img_orig, white_perc, black_perc)
+    plt.subplot(1, 2, 2)
+    plt.title('Changed image: black = ' + str(black_perc) + ', white = ' + str(white_perc))
+    plt.imshow(img_corr)
+    #plt.savefig(new_name) Если станет скучно
+    img_corr.save(new_name)
+    plt.show()
 
-img_res = tr[img_orig]
+#======================= MAIN =========================
+if __name__ == '__main__':
+    assert len(argv) == 5
+    assert os.path.exists(argv[1])
+    argv[3] = float(argv[3])
+    argv[4] = float(argv[4])
+    assert 0 <= argv[3] < 1
+    assert 0 <= argv[4] < 1
+    save_image(Image.open(argv[1]), argv[2], argv[3], argv[4])
 
-hist_res, bins = np.histogram(img_res.flatten(), 256, [0, 256])
-cdf_res = np.cumsum(hist_res)
-cdf_res_n = cdf_res * hist_res.max() / cdf_res.max()
 
-plt.subplot(211)
-plt.hist(img_orig.flatten(), 256, [0, 256], color = 'r')
-plt.plot(cdf_n, color = 'g')
-plt.axhline(B * hist.max(), color = 'b')
-plt.axhline(W * hist.max(), color = 'y')
-plt.xlim([0, 256])
-plt.ylim([0, hist.max()])
 
-plt.subplot(212)
-plt.hist(img_res.flatten(), 256, [0, 256], color = 'b')
-plt.plot(cdf_res_n, color = 'g')
-plt.xlim([0, 256])
-plt.ylim([0, hist_res.max()])
 
-plt.show()
 
-cv2.imshow("original", img_orig)
-cv2.moveWindow("original", 0, 0)
-cv2.imshow("result", img_res)
-cv2.moveWindow("result", 512, 0)
-
-cv2.waitKey(0)
-cv2.destroyAllWindows()
